@@ -63,7 +63,7 @@ decode(Data) ->
 
 -spec decode(iolist() | binary(), decode_options()) -> jiffy_decode_result().
 decode(Data, Opts) when is_binary(Data), is_list(Opts) ->
-    case nif_decode_init(Data, Opts) of
+    Res = case nif_decode_init(Data, Opts) of
         {error, _} = Error ->
             throw(Error);
         {partial, EJson} ->
@@ -72,10 +72,23 @@ decode(Data, Opts) when is_binary(Data), is_list(Opts) ->
             decode_loop(Data, Decoder, Val, Objs, Curr);
         EJson ->
             EJson
+    end,
+    case is_map(Res) of
+        false -> Res;
+        true -> decode_copy_map(Res)
     end;
 decode(Data, Opts) when is_list(Data) ->
     decode(iolist_to_binary(Data), Opts).
 
+-spec decode_copy_map(any()) -> jiffy_decode_result().
+decode_copy_map(Res) when is_binary(Res) -> binary:copy(Res);
+decode_copy_map(Res) when is_list(Res) ->
+    lists:map(fun(Member) -> decode_copy_map(Member) end, Res);
+decode_copy_map(Res) when is_map(Res) ->
+    maps:fold(fun(K,V,Acc) ->
+        Acc#{decode_copy_map(K)=> decode_copy_map(V)}
+    end, #{}, Res);
+decode_copy_map(Res) -> Res.
 
 -spec encode(json_value()) -> iodata().
 encode(Data) ->
